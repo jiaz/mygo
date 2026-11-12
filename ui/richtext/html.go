@@ -120,9 +120,9 @@ func writeBlocks(b *strings.Builder, paras []Paragraph) {
 			}
 			runs := p.Runs
 			if st.Row == HeaderRow {
-				// HTML has no tables yet: a header row goes as bold
-				// text, as the editor read it before it had rows, so
-				// what's pasted elsewhere looks as it did.
+				// HTML has no tables: a header row goes as bold text, as
+				// the editor read it before it had rows, so what's
+				// pasted elsewhere looks as it did.
 				runs = boldRuns(runs)
 			}
 			writeRuns(b, runs)

@@ -218,7 +218,7 @@ func TestTableEndAtAnotherDepth(t *testing.T) {
 	}
 }
 
-// HTML doesn't write tables yet: a table copied as HTML is its rows as
+// HTML doesn't write tables: a table copied as HTML is its rows as
 // paragraphs with the header bold, as it was before the editor had rows,
 // so an app it's pasted into shows the header as it did. A header cell
 // with a weight of its own keeps it.
