@@ -93,6 +93,14 @@ Lists are flat, as in Quill and Automerge: a paragraph's `Indent` is its
 level, and items next to each other make a list, numbered at each level from
 1 (in letters and Roman numerals below the first).
 
+Tables are flat too: a row is a paragraph whose `Row` is `HeaderRow` or
+`BodyRow`, its cells apart by tabs and a cell's lines by line separators
+(U+2028). A header row and the body rows right after it are one table, as
+paragraphs of code next to each other are one block. Each row's `Columns`
+holds the table's alignments, a letter a column (`l`, `c`, `r`, or `-` for
+none), as a Markdown table's delimiter row. A cell holds one paragraph of
+text, as GitHub's tables do.
+
 A paragraph's `ID` is the app's name for it, as the key of what the app keeps
 about it, such as notes or a timeline. The editor does not show it, and it
 follows the paragraph's text through edits:
@@ -503,6 +511,9 @@ in `ui/richtext`).
 - underlines as `<u>`, and as `<strong>`, `<em>` and `<del>` the marks
   that Markdown's delimiters cannot open or close where they are, as bold
   "foo." right before "bar".
+- tables, as GitHub's: the header, the delimiter row with the columns'
+  alignments, then the rows, with the pipes in cells escaped and their
+  line breaks as `<br>`.
 
 Alignment, fonts and colors have no Markdown and are left out.
 
@@ -510,5 +521,5 @@ Alignment, fonts and colors have no Markdown and are left out.
 CommonMark with GitHub's extensions and footnotes, with the parser of
 [Markdown views](markdown.md) (`ui/markdown/parser`). A list item's
 paragraphs after its first are indented under it, and a table's rows are
-paragraphs of their cells apart by tabs. Math stays as written, as the
+rows, with as many cells as its header, as GitHub shows them. Math stays as written, as the
 editor does not show it. What `Markdown` writes reads back the same.
