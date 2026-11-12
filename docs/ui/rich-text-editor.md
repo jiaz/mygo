@@ -431,6 +431,34 @@ rules, measured on macOS 27, and those of ProseMirror, Lexical and Quill:
   until the caret moves: delete a bold word and type, and the text is bold.
 - After Enter, typing keeps the attributes typed before it.
 
+## Tables
+
+A table's cells are laid out side by side, each at its column's width and
+wrapping there, and a row is as tall as its tallest cell. Columns take
+their widths from what they hold, as a browser lays out a table: each as
+wide as its widest cell on one line, with the room left shared out; when
+that is wider than the editor, the columns narrower than an equal share
+keep their width and the others share the rest. The grid's lines are the
+window theme's `Border`, and the header's fill the editor theme's
+`CodeBlockBackground`.
+
+- Tab and Shift-Tab go to the end of the next cell and of the one before,
+  across rows. Tab in the last cell adds a row.
+- Enter adds a row below. On an empty last row it leaves the table, as on
+  an empty item of a list.
+- Backspace at a cell's start and Delete at its end do nothing, so cells
+  never merge. A selection across cells clears their text and keeps the
+  cells. What is typed or pasted in a cell is its text: its paragraphs
+  the cell's lines, its tabs spaces, its formats kept.
+- Backspace and Delete take away an empty paragraph next to a table and
+  leave the table as it was.
+- ↑ and ↓ go to the row above or below when they leave a cell's lines.
+
+A table copied is the editor's own format, which pastes it back as a table,
+and plain text with its cells apart by tabs, which spreadsheets paste as
+cells. Commands to make tables and their rows and columns, and tables in
+HTML and RTF, are still to come.
+
 ## Attachments
 
 An attachment is an object replacement character (U+FFFC) whose
