@@ -182,6 +182,15 @@ func (v *view) vertical(lines int, extend bool) {
 		v.moveTo(v.shown.Len(), ui.TextDownstream, extend)
 	default:
 		i, a := v.positionAt(v.desiredX, target)
+		if p := v.shown.paraAt(v.caret); i == v.caret && v.para(p).style.Row != NoRow {
+			// Past a cell's last line: the row below (above), as its
+			// row is taller than the cell's text.
+			if lines > 0 && p+1 < len(v.paras) {
+				i, a = v.positionAt(v.desiredX, v.hs.top(p+1)+1)
+			} else if lines < 0 && p > 0 {
+				i, a = v.positionAt(v.desiredX, v.hs.top(p)-1)
+			}
+		}
 		if _, ny, _ := v.caretAt(i, 0, a); ny == y {
 			// Still on the caret's line: the room to the next line
 			// that way, a heading's margin or Space, is over half a
@@ -414,6 +423,8 @@ func (v *view) key(key ui.Key, mods ui.Modifiers) bool {
 		switch {
 		case m != 0:
 			return false
+		case st.Row != NoRow:
+			return v.tableTab(shift)
 		case st.List != NoList:
 			if shift {
 				return v.run("outdent")
