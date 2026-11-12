@@ -197,8 +197,11 @@ type editor struct {
 	hoverLine    int
 	// region is the part of the editor under the pointer, which its
 	// cursor and the scroll bars' highlight show.
-	region     region
-	scrollbar  scrollbarDrag
+	region    region
+	scrollbar scrollbarDrag
+	// barFade times the scroll bars shown while the editor scrolls, as
+	// their style's Show says.
+	barFade    ui.ScrollbarFade
 	frameNow   time.Time
 	needsBuild bool
 	// stale tells that an edit found the buffer edited since the editor
