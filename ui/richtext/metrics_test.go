@@ -40,7 +40,7 @@ func TestHeadingLineHeight(t *testing.T) {
 		t.Errorf("a heading of 24 with lines of 36: %v high", h)
 	}
 	// How many lines the second wraps to depends on the platform's font.
-	lines := len(doc.shownIn.Value().paras[1].layout.Lines())
+	lines := len(doc.shownIn.Value().paras[1].layout.(plainText).Lines())
 	if lines < 2 {
 		t.Errorf("the second heading is on %d lines, want it to wrap", lines)
 	}
