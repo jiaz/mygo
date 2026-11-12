@@ -218,10 +218,9 @@ func TestTableEndAtAnotherDepth(t *testing.T) {
 	}
 }
 
-// HTML doesn't write tables: a table copied as HTML is its rows as
-// paragraphs with the header bold, as it was before the editor had rows,
-// so an app it's pasted into shows the header as it did. A header cell
-// with a weight of its own keeps it.
+// A table copied as HTML is its rows as paragraphs with the header bold,
+// as it was before the editor had rows, so an app it's pasted into shows
+// the header as it did. A header cell with a weight of its own keeps it.
 func TestATableCopiesAsHTMLWithItsHeaderBold(t *testing.T) {
 	text := ParseMarkdown("| Time | Talk |\n| --- | --- |\n| 9:00 | Keynote |")
 	if got, want := text.HTML(), "<meta charset=\"utf-8\"><p><b>Time\tTalk</b></p><p>9:00\tKeynote</p>"; got != want {
