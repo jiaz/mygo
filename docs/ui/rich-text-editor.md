@@ -463,8 +463,8 @@ rows touch.
 
 A table copied is the editor's own format, which pastes it back as a table,
 and plain text with its cells apart by tabs, which spreadsheets paste as
-cells. Commands to make tables and their rows and columns, and tables in
-HTML and RTF, are still to come.
+cells. The editor has no commands to make a table or to add or remove its
+rows and columns, and doesn't read or write tables as HTML or RTF.
 
 ## Attachments
 
