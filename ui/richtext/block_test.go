@@ -136,7 +136,8 @@ func TestBlockGrowsInItsFrame(t *testing.T) {
 }
 
 // A block's element paints where its paragraph is, partly scrolled out at
-// the top too, and a block selected shows the selection around it.
+// the top too, and a block selected paints no selection of the editor's
+// around it: the element shows it.
 func TestBlockPaints(t *testing.T) {
 	cd := newCard("Card", 60)
 	paras := []Paragraph{para("Before"), blockPara(cd.at)}
@@ -159,8 +160,8 @@ func TestBlockPaints(t *testing.T) {
 	if got := img.RGBAAt(int(r.X+r.W/2), int(r.Y+r.H/2)); got.R != 200 || got.G != 200 || got.B != 200 {
 		t.Fatalf("the element partly out of view paints %v", got)
 	}
-	if got := img.RGBAAt(int(r.X+r.W/2), int(r.Y+r.H)+1); got.B < 200 || got.R > 60 {
-		t.Fatalf("below the selected block, the editor paints %v, not the selection", got)
+	if got := img.RGBAAt(int(r.X+r.W/2), int(r.Y+r.H)+1); got.B > 200 && got.R < 60 {
+		t.Fatalf("below the selected block, the editor paints the selection: %v", got)
 	}
 }
 
