@@ -377,8 +377,10 @@ func (v *view) buildLayer(c *ui.Context, e ui.Element, ref float64, up bool) {
 				}
 			}
 			id := bb.id
-			// A press on it goes on to what it presses; the wheel over it,
-			// which it leaves, scrolls the text.
+			// A group to assistive technology, named as the attachment is,
+			// in the text's order. A press on it goes on to what it
+			// presses; the wheel over it, which it leaves, scrolls the text.
+			box.Role(ui.RoleGroup).Label(at.Name)
 			box.Cursor(ui.CursorDefault).HandleInput(func(ev ui.InputEvent) bool { return v.blockInput(id, ev) })
 			if box.Shortcut(0, ui.KeyEscape) {
 				// Escape in the element, unless what has the focus in it

@@ -7,8 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// card is an attachment shown as a block: a box h high, named name, which
-// counts its builds and binds its element to handle.
+// card is an attachment shown as a block: a box h high, which counts its
+// builds and binds its element to handle, in a block named name.
 type card struct {
 	name   string
 	h      float32
@@ -23,7 +23,7 @@ func newCard(name string, h float32) *card {
 	cd := &card{name: name, h: h}
 	cd.at = &Attachment{Name: name, Height: 24, Element: func(c *ui.Context, width float32) ui.Element {
 		cd.builds++
-		e := ui.Box(c).Height(cd.h).Background(ui.RGB(200, 200, 200)).Label(cd.name).Bind(&cd.handle)
+		e := ui.Box(c).Height(cd.h).Background(ui.RGB(200, 200, 200)).Bind(&cd.handle)
 		if cd.inside != nil {
 			e.Children(func() { cd.inside(c) })
 		}
@@ -764,5 +764,55 @@ func TestBlockFocusComesIntoView(t *testing.T) {
 	}
 	if r := bw.bounds(cd); !near(r.Y, bw.box(t, 100).Top) {
 		t.Fatalf("the focus in the block, its element is at %v, its paragraph at %+v", r, bw.box(t, 100))
+	}
+}
+
+// Assistive technology reads each block as a group named as its
+// attachment is, inside the editor's text field, in the text's order,
+// those above the line being typed and below it alike; a block kept built
+// above the view is not read.
+func TestBlocksForAssistiveTechnology(t *testing.T) {
+	cards := map[string]*card{}
+	block := func(name string) Paragraph {
+		cards[name] = newCard(name, 40)
+		return blockPara(cards[name].at)
+	}
+	paras := []Paragraph{block("Kept")}
+	cards["Kept"].at.KeepBuilt = true
+	for i := range 40 {
+		paras = append(paras, para(fmt.Sprintf("Paragraph %d", i)))
+	}
+	// 41 A, 42, 43 B, 44 the caret's, 45 C.
+	paras = append(paras, block("A"), para("Between"), block("B"), para("Typing here"), block("C"))
+	for i := range 40 {
+		paras = append(paras, para(fmt.Sprintf("After %d", i)))
+	}
+	doc := NewDocument(TextOf(paras...))
+	bw := newBlockWorld(t, doc, 300, 300, EditorOptions{})
+	typing := doc.Text().paraStart(44) + 3
+	bw.focus(typing, typing)
+	doc.ScrollToParagraph(40, ui.ScrollStart)
+	bw.tt.Frame()
+	if v := bw.view(t); !v.anchorText || v.anchor != 44 {
+		t.Fatalf("the editor keeps paragraph %d, by its text %v", v.anchor, v.anchorText)
+	}
+	var read []string
+	field := -1
+	for i, a := range bw.tt.AccessAll() {
+		switch a.Role {
+		case ui.RoleTextField:
+			field = i
+		case ui.RoleGroup:
+			if field < 0 {
+				t.Fatalf("the group %q is read before the editor", a.Name)
+			}
+			read = append(read, a.Name)
+			if r := bw.bounds(cards[a.Name]); a.Bounds != r {
+				t.Errorf("the group %q is at %v, its element at %v", a.Name, a.Bounds, r)
+			}
+		}
+	}
+	if fmt.Sprint(read) != "[A B C]" {
+		t.Fatalf("assistive technology reads the blocks %q", read)
 	}
 }
