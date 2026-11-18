@@ -305,6 +305,52 @@ func TestAdvanceRunsAFrameEachRefresh(t *testing.T) {
 	}
 }
 
+// A frame asked for only by a value that moves with the clock, at the
+// Tester's time, which stands still, draws what the frame before drew:
+// Frame stops at it, the frame still pending, and Advance draws the motion
+// on.
+func TestFrameStopsWhereOnlyAnAnimationAsks(t *testing.T) {
+	red, blue := RGB(255, 0, 0), RGB(0, 0, 255)
+	target, shown := red, red
+	builds := 0
+	tt := NewTester(func(c *Context) {
+		builds++
+		e := Box(c).Size(40, 20)
+		shown = e.AnimateColor("bg", target, Animation{Duration: 200 * time.Millisecond, Ease: Linear})
+		e.Background(shown)
+	}, 100, 50)
+	target = blue
+	builds = 0
+	tt.Frame()
+	if builds != 1 || shown != red || !tt.FramePending() {
+		t.Errorf("a frame built %d, want 1, the color %+v, a frame pending %v", builds, shown, tt.FramePending())
+	}
+	tt.Advance(100 * time.Millisecond)
+	if shown == red || shown == blue {
+		t.Errorf("halfway, the color is %+v", shown)
+	}
+	tt.Advance(time.Second)
+	if shown != blue || tt.FramePending() {
+		t.Errorf("after a second, the color %+v, a frame pending %v", shown, tt.FramePending())
+	}
+}
+
+// Frames that draw something new at the same time, as a view laying out
+// from what it measured in the frame before, are all run.
+func TestFrameRunsTheFramesThatChangeAtItsTime(t *testing.T) {
+	width := float32(10)
+	tt := NewTester(func(c *Context) {
+		Box(c).Size(width, 20).Background(RGB(0, 0, 0))
+		if width < 50 {
+			width += 10
+			c.AnimationFrame()
+		}
+	}, 100, 50)
+	if width != 50 || tt.FramePending() {
+		t.Errorf("settled at a width of %v, a frame pending %v", width, tt.FramePending())
+	}
+}
+
 // After's frame waits for Advance to reach its time.
 func TestFramePendingAfter(t *testing.T) {
 	ask := true

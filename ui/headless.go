@@ -28,6 +28,13 @@ type headless struct {
 	// requested is set when the view asks for a frame, from any goroutine
 	// for invalidate.
 	requested atomic.Bool
+	// asks counts the frames the engine asked for (requestFrame) during
+	// the frame settle runs, and posted tells that one was asked for
+	// otherwise (post, invalidate); unchanged tells that the frame drew
+	// the pixels of the one before (settle).
+	asks      atomic.Int32
+	posted    atomic.Bool
+	unchanged bool
 	dark      bool
 	prefs     platform.Preferences
 	// lang and reg are what SetLocale and SetRegion set.
@@ -123,7 +130,7 @@ func (h *headless) textSystem() *text.System {
 }
 func (h *headless) present(s *scene.Scene) {
 	h.last = s
-	h.img.Render(s)
+	h.unchanged = len(h.img.Render(s)) == 0
 }
 func (h *headless) afterTimer(at time.Time) {
 	h.afterAt = at
@@ -132,7 +139,7 @@ func (h *headless) afterTimer(at time.Time) {
 	}
 }
 func (h *headless) framePath() string                          { return "drawn in memory" }
-func (h *headless) requestFrame()                              { h.requested.Store(true) }
+func (h *headless) requestFrame()                              { h.asks.Add(1); h.requested.Store(true) }
 func (h *headless) repaintTimer(at time.Time)                  { h.repaintAt = at }
 func (h *headless) setCursor(c Cursor)                         { h.cursor = c }
 func (h *headless) setTextInput(t platform.TextInputState)     { h.ime = t }
@@ -203,6 +210,7 @@ func (h *headless) vibrancy() bool                    { return h.material }
 func (h *headless) active() bool                      { return !h.inactive }
 func (h *headless) invalidate() {
 	h.invalidated.Store(true)
+	h.posted.Store(true)
 	h.requested.Store(true)
 }
 
@@ -233,7 +241,7 @@ func (h *headless) openURL(u string, done func(error)) {
 
 // post asks for a frame rather than run fn: the Tester builds each frame
 // anew.
-func (h *headless) post(func()) { h.requested.Store(true) }
+func (h *headless) post(func()) { h.posted.Store(true); h.requested.Store(true) }
 
 // keepAccess keeps the tree for assistive technology, and its
 // announcements.
@@ -324,18 +332,37 @@ func coreNewTesterWith(view func(c *context), width, height int, o TesterOptions
 	return t
 }
 
-// settle runs frames until the view asks for no more, or 20 of them.
+// settle runs frames until the view asks for no more, or 20 of them. Its
+// frames all come at the Tester's time, which stands still meanwhile, so
+// once a frame is asked for only by values that move with the clock
+// (AnimateTo, AnimateColor, Keyframes) after one that drew the pixels of
+// the frame before, the frames after it would draw the same again: settle
+// stops there, and the frame stays asked for (FramePending), for Advance
+// to draw as the clock moves on.
 func (t *Tester) settle() {
 	t.frameAt = t.Now()
 	for i := 0; i < 20; i++ {
 		t.h.requested.Store(false)
 		t.h.invalidated.Store(false)
+		t.h.posted.Store(false)
+		t.h.asks.Store(0)
+		t.h.unchanged = false
 		t.runLater()
 		t.rt.runFrame()
-		if !t.asked() {
+		if !t.asked() || t.onlyMoving() {
 			return
 		}
 	}
+}
+
+// onlyMoving reports whether the frame settle just ran drew what the one
+// before it drew and asked for the next only for values of the clock: the
+// one frame the engine asked for, as they move, nothing else animating,
+// posted, invalidated or to run after it, in a window that shows.
+func (t *Tester) onlyMoving() bool {
+	h, rt := t.h, t.rt
+	return rt.clocked && !rt.animating && h.unchanged && h.asks.Load() == 1 && !h.posted.Load() &&
+		len(h.later) == 0 && !h.hidden
 }
 
 // asked reports whether the view asked for a frame.

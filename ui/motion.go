@@ -389,7 +389,7 @@ func (e *node) AnimateTo(key any, target float32, a Animation) float32 {
 		ch.m, ch.k, ch.c, ch.eps = a.Spring.physics()
 	}
 	if ch.moving || ch.pending {
-		e.c.AnimationFrame()
+		e.c.rt.clocked = true
 	} else if moving {
 		ch.rested = rt.frame
 	}
@@ -689,7 +689,7 @@ func (e *node) AnimateColor(key any, target Color, a Animation) Color {
 	m.to = target
 	if m.k.moving || m.k.pending {
 		m.shown = mixPremultiplied(m.from, target, max(0, min(float32(m.k.value), 1)), a.Oklab)
-		e.c.AnimationFrame()
+		e.c.rt.clocked = true
 	} else {
 		m.shown = target
 		if moving {
@@ -817,7 +817,7 @@ func (e *node) Keyframes(key any, frames []Keyframe, options ...KeyframeOptions)
 		if s.done {
 			s.rested = rt.frame
 		} else {
-			e.c.AnimationFrame()
+			e.c.rt.clocked = true
 		}
 	}
 	return s.value

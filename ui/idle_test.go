@@ -66,9 +66,9 @@ func TestSettledWindowSleeps(t *testing.T) {
 		if wakeups != 0 {
 			t.Errorf("%s, then settled: %d wakeups in an hour", step.what, wakeups)
 		}
-		if tt.FramePending() || !tt.h.afterAt.IsZero() || !tt.h.repaintAt.IsZero() || tt.rt.animating || tt.rt.repainting {
-			t.Errorf("%s, then settled: a frame asked for %v, timers at %v and %v, animating %v, repainting %v",
-				step.what, tt.FramePending(), tt.h.afterAt, tt.h.repaintAt, tt.rt.animating, tt.rt.repainting)
+		if tt.FramePending() || !tt.h.afterAt.IsZero() || !tt.h.repaintAt.IsZero() || tt.rt.animating || tt.rt.clocked || tt.rt.repainting {
+			t.Errorf("%s, then settled: a frame asked for %v, timers at %v and %v, animating %v (clocked %v), repainting %v",
+				step.what, tt.FramePending(), tt.h.afterAt, tt.h.repaintAt, tt.rt.animating, tt.rt.clocked, tt.rt.repainting)
 		}
 		if step.what == "pointed at a button with a tooltip" && !tt.HasText("Count up") {
 			t.Error("the tooltip did not show")
