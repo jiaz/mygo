@@ -738,7 +738,7 @@ func TestTransitionExitTiming(t *testing.T) {
 	if o := exit(0); o != -1 {
 		t.Errorf("going at once, its copy shows at %v", o)
 	}
-	if len(tt.rt.trans) > 1 || tt.rt.animating {
+	if len(tt.rt.trans) > 1 || tt.rt.animating || tt.rt.clocked {
 		t.Error("going at once, it keeps animating")
 	}
 }

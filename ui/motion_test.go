@@ -46,7 +46,7 @@ func TestSpringRetargetKeepsVelocityBetweenFrames(t *testing.T) {
 	tt.Frame()
 	closeFloat(t, value, -50)
 	closeFloat(t, velocity, 0)
-	if tt.rt.animating || tt.h.requested.Load() {
+	if tt.rt.animating || tt.rt.clocked || tt.h.requested.Load() {
 		t.Fatal("resting spring kept requesting frames")
 	}
 }
@@ -86,7 +86,7 @@ func TestKeyframeTimingRestartAndAlternate(t *testing.T) {
 	*now = now.Add(400 * time.Millisecond)
 	tt.Frame()
 	closeFloat(t, value, 30)
-	if tt.rt.animating {
+	if tt.rt.animating || tt.rt.clocked {
 		t.Fatal("completed sequence requests frames")
 	}
 	s := sequence{frames: frames, options: KeyframeOptions{Repeat: 1, Alternate: true}, start: time.Unix(0, 0)}
@@ -123,7 +123,7 @@ func TestMotionReducedMidFlightAndInfiniteSequences(t *testing.T) {
 	closeFloat(t, spring, 100)
 	closeFloat(t, eased, 100)
 	closeFloat(t, keyframed, 20)
-	if tt.rt.animating || tt.h.requested.Load() {
+	if tt.rt.animating || tt.rt.clocked || tt.h.requested.Load() {
 		t.Fatal("reduced motion left a frame loop running")
 	}
 	tt.SetPreferences(Preferences{})
@@ -132,7 +132,7 @@ func TestMotionReducedMidFlightAndInfiniteSequences(t *testing.T) {
 	}
 	run++
 	tt.Frame()
-	if !tt.rt.animating {
+	if !tt.rt.clocked {
 		t.Fatal("explicit replay did not restart sequence")
 	}
 }
@@ -168,7 +168,7 @@ func TestMotionNonMotionAnimatesWithLessMotion(t *testing.T) {
 	if pulse <= 0 || pulse >= 1 || settled {
 		t.Fatalf("halfway with less motion, the sequence is at %v and the fade settled: %v", pulse, settled)
 	}
-	if !tt.rt.animating && !tt.h.requested.Load() {
+	if !tt.rt.animating && !tt.rt.clocked && !tt.h.requested.Load() {
 		t.Fatal("a fade with less motion asks for no frames")
 	}
 	*now = now.Add(time.Second)
@@ -179,7 +179,7 @@ func TestMotionNonMotionAnimatesWithLessMotion(t *testing.T) {
 		t.Fatal("the fade did not settle")
 	}
 	tt.Frame()
-	if tt.rt.animating || tt.h.requested.Load() {
+	if tt.rt.animating || tt.rt.clocked || tt.h.requested.Load() {
 		t.Fatal("a settled fade kept asking for frames")
 	}
 	// DisableAnimations still shows it at once.
