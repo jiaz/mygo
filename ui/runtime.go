@@ -467,7 +467,12 @@ type engine struct {
 	// what moves or what changed, waits for the window to show, and shown
 	// is when some of it last showed again (SurfaceShown); input tells
 	// that an event other than a frame's came since the last frame built.
-	animating  bool
+	animating bool
+	// clocked is set as animating is, by values that move with the clock
+	// alone (AnimateTo, AnimateColor, Keyframes): they ask for the same
+	// frames, and at a time that stands still, as a Tester's does between
+	// its Advances, those frames show the same (settle).
+	clocked    bool
 	repainting bool
 	repaintAt  time.Time
 	redraw     bool
@@ -779,7 +784,7 @@ func (rt *engine) runFrame() {
 	rt.paths.switching, rt.paths.spill.last = false, false
 	rt.gen = rt.text.Generation()
 	rt.painted = [3]float32{w, h, scale}
-	rt.animating, rt.repainting, rt.repaintAt = false, false, time.Time{}
+	rt.animating, rt.clocked, rt.repainting, rt.repaintAt = false, false, false, time.Time{}
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	rt.routeKeys()
 	rt.glideWheels(now)
@@ -1049,11 +1054,11 @@ func (rt *engine) frameTime() time.Time {
 // the animation frames of windows out of sight.
 func (rt *engine) next() {
 	rt.redraw, rt.repaintDue, rt.held = false, time.Time{}, false
-	moving := rt.animating || rt.repainting || !rt.repaintAt.IsZero()
+	moving := rt.animating || rt.clocked || rt.repainting || !rt.repaintAt.IsZero()
 	switch {
 	case moving && rt.host.occluded():
 		rt.held = true
-	case rt.animating:
+	case rt.animating || rt.clocked:
 		rt.pace(0)
 		rt.askBuild()
 	case rt.repainting:

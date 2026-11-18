@@ -56,7 +56,7 @@ func TestNumericContentTransition(t *testing.T) {
 	if faded < 2 {
 		t.Errorf("rolling, %d of %d glyphs faded", faded, all)
 	}
-	if !tt.rt.animating && !tt.h.requested.Load() {
+	if !tt.rt.animating && !tt.rt.clocked && !tt.h.requested.Load() {
 		t.Error("rolling, it asks for no frames")
 	}
 	*now = now.Add(100 * time.Millisecond)
