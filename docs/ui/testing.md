@@ -90,7 +90,11 @@ panics where the second key was given, as apps only log it.
   view once at a given scale. Inputs and `tt.Frame` run the frames the
   view asks for until it asks for no more, or 20 of them:
   `tt.FramePending` tells whether it still asks, as a view that animates
-  or never settles does.
+  or never settles does. As the clock stands still between them, a frame
+  asked for only by values that move with it (`Animate`, `AnimateTo`,
+  `AnimateColor`, `Keyframes`), after one that drew nothing new, would
+  draw the same again: they stop there, the frame still pending, for
+  `tt.Advance` to draw the motion.
 - **Time.** A tester has a clock of its own, `tt.Now()`, which stands
   still until `tt.Advance(d)` moves it on by `d`, running the frames due
   meanwhile at their times: one each refresh while something moves, and
