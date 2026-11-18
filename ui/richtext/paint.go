@@ -59,14 +59,9 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		if a != z && a <= pe && z >= ps && (focused || v.opts.ReadOnly) {
 			from, to := v.local(i, max(a, ps)), v.local(i, min(z, pe))
 			color := look.Selection
-			switch {
-			case pv.block && from < to:
-				// A block selected, behind its element and a little around
-				// it, where an element that fills its box leaves it seen.
-				o := max(2, look.size*0.2)
-				l, rr := v.insets(st)
-				p.Fill(ui.Rect{X: x - o, Y: y - o, W: max(w-l-rr, 1) + 2*o, H: pv.h - pv.space + 2*o}, color, o)
-			case !pv.block:
+			// A block selected paints nothing of the editor's: its element
+			// knows its own shape, and shows it selected as it draws it.
+			if !pv.block {
 				for _, s := range pv.layout.SelectionRects(ui.TextInputRange{Start: pv.units[from], End: pv.units[to]}) {
 					p.Fill(ui.Rect{X: x + s.X, Y: y + s.Y, W: s.W, H: s.H}, color, 0)
 				}
