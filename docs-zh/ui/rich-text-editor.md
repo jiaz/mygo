@@ -7,7 +7,7 @@
 - **格式：** 粗体、斜体、下划线、删除线、行内代码、字体、字号和颜色。
 - **链接：** 单击打开，可从应用或按 ⌘K 设置。
 - **段落：** 标题、项目符号列表、编号列表和任务列表、引用、代码块和对齐。
-- **附件：** 行内的图像。
+- **附件：** 行内的图像，以及作为独立块显示的应用元素。
 - **编辑：** 文字处理器的快捷键和“格式”菜单，以及撤销时让格式随文本一起恢复的功能。
 - **数据交换：** 保留格式的复制与粘贴、按当前输入样式组合文本的输入法、Markdown 导出，以及能读出格式的屏幕阅读器。
 
@@ -288,6 +288,43 @@ app.doc.InsertAttachment(&richtext.Attachment{Image: photo, Name: "Beach", Width
 
 没有图像或 `Draw` 函数时，附件会在盒子里显示 `Name`，就像尚未加载的图像。HTML 和 Markdown 会写出附件的 `URL`。
 
+## 块
+
+带 `Element` 的附件独占一个段落时，会显示应用自己的一个元素：卡片、图表或表单，取代该段落的那一行，宽度与该处文本相同，高度为元素排版后的高度。元素高度变化时，它下方的文本和其他块在同一帧随之移动，例如卡片中流式显示回复，或展开其中一部分时。
+
+```go
+poll := &richtext.Attachment{
+	Name:   "Poll",
+	Height: 96, // until the element is first laid out
+	Element: func(c *ui.Context, width float32) ui.Element {
+		return ui.Column(c).Padding(12).Gap(8).Border(1, t.Border).Radius(8).TabStop(false).Children(func() {
+			ui.Text(c, "Where do we have lunch?")
+			if ui.Button(c, "Vote").Clicked() {
+				app.vote()
+			}
+		})
+	},
+}
+app.doc = richtext.NewDocument(richtext.TextOf(
+	richtext.Paragraph{Runs: []richtext.Run{{Text: "Friday"}}},
+	richtext.Paragraph{Runs: []richtext.Run{{
+		Text:       string(richtext.ObjectReplacement),
+		Attributes: richtext.Attributes{Attachment: poll},
+	}}},
+))
+```
+
+编辑器在段落位于视口中的帧里构建元素；和文本一样高、放在滚动容器中的编辑器，则在绘制器的裁剪区域及其上下各一屏内构建，因此长文本只构建显示出来的块。段落离开视口后，保持其元素上次的高度；元素从未排版时，使用 `Height`。把 `Height` 设为元素的高度，并在元素加载期间保持这个高度，例如显示同样大小的占位内容，这样进入视口时文本不会移动。`KeepBuilt` 让元素在每一帧都被构建，无论是否在视口中，适合持有自身状态的元素，例如正在输入的文本框或正在加载的回复；文本滚动离开时，编辑器保持它的高度。编辑器保持正在输入的行不动时（见[滚动](#滚动)），这一行上方的块增高，会让块上方的文本向上移动。
+
+- 在块上按下会选中其附件，并继续交给被按下的内容，就像按下按钮：文本不会滚动到它，从它开始拖动也不会选择任何内容。右键单击会打开编辑器的菜单。在编辑器的滚动条上按下，仍由滚动条处理。
+- 在块上使用滚轮会滚动文本，滚到尽头时交给编辑器外层的容器。
+- 只选中块的附件时，Return、⌘Return（其他平台上为 Ctrl+Enter）和 Tab 会把焦点交给元素，前提是 `OnKey` 没有处理该按键。要让元素接收按键，需使其可获得焦点；用 `TabStop(false)` 可让 Tab 继续进入其中的内容。插入符位于块旁边时，这些按键的行为与别处相同：Return 会开始新段落。
+- 在元素中按 Escape 会把焦点交还给文本，并选中该附件；元素中拥有焦点的内容自己处理 Escape 时（例如通过 `Shortcut`），由它处理。
+- 焦点通过 Tab 或应用进入块时，块会滚动到视口中；块在拥有焦点时被删除，焦点会交还给文本。
+- 块旁边的插入符为一行高：在块之前时位于其顶部，在块之后时位于其底部。块像单个字符一样被选择、复制和删除，撤销时连同其元素一起恢复。
+
+段落中还有其他文本的附件按普通附件显示，不会构建其元素。
+
 ## 复制与粘贴
 
 复制把选区以三种格式放入剪贴板：
@@ -313,7 +350,7 @@ app.doc.InsertAttachment(&richtext.Attachment{Image: photo, Name: "Beach", Width
 - **Orca** 读取 ATK 的文本段属性。
 - **讲述人**读取 UI Automation 的 Text 模式，可按字符、格式、单词和行读取，给出每个文本段的字体、字重、斜体、行、颜色和标题级别，以及它们不一致时的混合值。
 
-屏幕阅读器也会移动选区。
+屏幕阅读器也会移动选区。它们在文本框内按文本顺序读出每个块的元素，作为以附件名称命名的组。
 
 ## 大型文稿
 
