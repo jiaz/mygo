@@ -2346,7 +2346,13 @@ as in Tauri:
   popover that has shown leaves its material's backdrop behind, a
   graphics surface a little larger than the popover. One still closing,
   as Hide's animation runs, waits until it tells it closed
-  (`popoverDidClose:`, to `spareDelegate`).
+  (`popoverDidClose:`, to `spareDelegate`). The flyout's delegate is the
+  popover's, not its window's: it hears that window's occlusion from the
+  notification center while it has it (`adoptPopoverWindow`), and tells
+  the surface shown or hidden as that changes, as the popover shows
+  (`popoverDidShow:`) and as it forgets the window
+  (`tellPopoverOcclusion`), so that the frames held while it was hidden
+  draw as it shows again (#2053).
   `Flyout.Tray` anchors one to a tray icon's `Bounds` instead, without a
   parent: the panel at `NSPopUpMenuWindowLevel` or an `NSPopover` shown
   from the status item's button (macOS), a topmost unowned popup
@@ -4443,6 +4449,18 @@ either.
     may count a row too few until they show. Closing CJK punctuation
     starts no row, nor opening punctuation ends one (`canBreak`). A new
     generation of the text system measures and shapes everything anew.
+    Unwrapped lines scroll sideways as far as the widest line known
+    (`lineWidths`): the widths of the widest 64 lines laid out, by line,
+    which edits move as wraps, forgetting the lines they change, as
+    other inlays, replacements and line styles forget theirs and another
+    font, tab size or theme all; a line laid out again is as wide as it
+    was until forgotten, and a long line's last piece, shaped as it
+    shows, can make it wider. So an edit lays out only the lines in
+    view, a line out of view keeps its width while it is unchanged, and
+    following an edit costs the same in a long text. Each frame lays out
+    the lines in view first and brings the offset sideways into the
+    range, which input before it takes as the last frame's at least, the
+    lines an edit changed not laid out yet.
   - *Replacements* (`replace.go`). A range shown as something else is a
     segment of a line's displayed text, as a tab or an inlay is: its Text,
     nothing, or for an element an object replacement character the text
