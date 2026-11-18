@@ -212,6 +212,29 @@ type view struct {
 	read, readCaret bool
 	readBoxes       []ParagraphBox
 	readCaretRect   ui.Rect
+	// readHeight is set as the app reads ContentHeight, for the next paint
+	// to ask for a frame when a block changed the text's height.
+	readHeight bool
+	// blockParas are the paragraphs shown as blocks (block.go), in order,
+	// following the edits; blocks is what the editor keeps of each, by its
+	// paragraph's id, and built the blocks built in this frame.
+	blockParas []int
+	blocks     map[uint64]*block
+	built      []builtBlock
+	gen        uint64
+	// c is the window's context, for the handles of the blocks.
+	c *ui.Context
+	// layer is the element the blocks are built in, at layerAt (its left,
+	// top and right insets) in the editor's padding box, inside the
+	// editor's border, as border measured it once borderKnown.
+	layer       ui.Handle
+	layerAt     [3]float32
+	border      [4]float32
+	borderKnown bool
+	styled      bool
+	// misplaced counts the paints in a row that found the blocks where
+	// their paragraphs are not, though no block changed its height.
+	misplaced int
 }
 
 type editMode uint8
@@ -243,6 +266,9 @@ type paraView struct {
 	// indent is how far its first line goes in (Theme.FirstLineIndent),
 	// as its layout indents it (ui.TextShape.Indent).
 	indent float32
+	// block tells that it was laid out as a block: its line takes no room,
+	// and h holds its element's height.
+	block bool
 }
 
 // look is how the text of an editor looks: its font and the theme's
@@ -320,7 +346,11 @@ func build(c *ui.Context, doc *Document, options []EditorOptions, styled bool) u
 	if styled {
 		e.FocusRing(false)
 	}
-	if focused && !v.opts.ReadOnly {
+	v.styled = styled
+	if len(v.blockParas) > 0 {
+		v.buildBlocks(c, e)
+	}
+	if v.focused && !v.opts.ReadOnly {
 		// The caret blinks for half a minute after the last change.
 		const blink = 530 * time.Millisecond
 		if phase := c.Now().Sub(v.blinkStart); phase < 30*time.Second {
@@ -376,6 +406,7 @@ func (d *Document) ContentHeight() (h float32, ok bool) {
 	}
 	v.sync()
 	v.layout(v.width, v.viewH)
+	v.readHeight = true
 	return float32(v.hs.top(len(v.paras))) + 2*v.padY, true
 }
 
@@ -388,10 +419,16 @@ func (v *view) heightsOf(was *view) {
 	v.shown, v.version = was.shown, was.version
 	v.paras = make([]paraView, len(was.paras))
 	for i, pv := range was.paras {
-		v.paras[i] = paraView{h: pv.h, space: pv.space}
+		v.paras[i] = paraView{h: pv.h, space: pv.space, block: pv.block}
 	}
 	v.width, v.viewH, v.laidLook = was.width, was.viewH, was.laidLook
 	v.clip, v.clipped = was.clip, was.clipped
+	v.blockParas = slices.Clone(was.blockParas)
+	for id, b := range was.blocks {
+		// The heights of the blocks: their elements are the new editor's.
+		nb := v.blockFor(id)
+		nb.h, nb.measured = b.h, b.measured
+	}
 	v.resetHeights()
 }
 
@@ -421,6 +458,9 @@ func (v *view) lockedSync() (change, bool) {
 			v.shown = d.text
 			v.paras = make([]paraView, d.text.ParagraphCount())
 			v.laid = 0
+			// The text set anew is walked for its blocks, as it is laid
+			// out anew; an edit finds those of what it replaced.
+			v.blockParas = findBlocks(v.blockParas[:0], d.text, 0, len(v.paras)-1)
 			v.resetHeights()
 			moved = false
 		}
@@ -457,6 +497,7 @@ func (v *view) replaced(c change, steps []change, now Text) {
 	was := v.shown
 	pa, pz := was.paraAt(c.start), was.paraAt(c.oldEnd)
 	npz := now.paraAt(c.newEnd)
+	v.blockParas = replaceBlocks(v.blockParas, pa, pz, npz, now)
 	stay := v.scroll - v.hs.top(pa)
 	for _, p := range v.paras[pa : pz+1] {
 		if p.layout != nil {
@@ -758,11 +799,24 @@ func (v *view) paraLayout(p int) *paraView {
 		first = unsafe.SliceData(para.runs)
 	}
 	indent := v.firstLine(p, para.style)
-	if pv.layout != nil && pv.id == para.id && pv.runs == first && pv.nruns == len(para.runs) && pv.style == para.style && pv.compose == compose && pv.at == at && pv.indent == indent {
+	blk := v.blockAt(p)
+	if blk != nil {
+		indent = 0 // a block is no line of text
+	}
+	if pv.layout != nil && pv.id == para.id && pv.runs == first && pv.nruns == len(para.runs) && pv.style == para.style && pv.compose == compose && pv.at == at && pv.indent == indent && pv.block == (blk != nil) {
 		// The space around it follows its neighbours, which may have
 		// changed without it: a code block's last line, the first heading,
-		// a body paragraph after one that became a heading.
-		if above, below := v.space(p, para.style); above+below != pv.space {
+		// a body paragraph after one that became a heading. A block's
+		// height follows its element's.
+		above, below := v.space(p, para.style)
+		switch {
+		case blk != nil:
+			if h := above + v.blockHeight(p, blk) + below; h != pv.h {
+				v.hs.add(p, float64(h-pv.h), 0)
+				pv.h = h
+			}
+			pv.space = above + below
+		case above+below != pv.space:
 			h := pv.h - pv.space + above + below
 			v.hs.add(p, float64(h-pv.h), 0)
 			pv.h, pv.space = h, above+below
@@ -813,6 +867,16 @@ func (v *view) paraLayout(p int) *paraView {
 	if v.opts.Spans != nil {
 		spans = v.opts.Spans(p, para.style, spans)
 	}
+	if blk != nil {
+		// The line of a block is the text's width and takes no height of
+		// its own: the element takes its place, and the caret beside it is
+		// a line of the text high.
+		for i := range spans {
+			if spans[i].ObjectWidth > 0 {
+				spans[i].ObjectWidth, spans[i].ObjectHeight, spans[i].ObjectDescent = v.look.width, 0, 0
+			}
+		}
+	}
 	// The indent is on the side the paragraph starts at, the right of one
 	// reading right to left.
 	shape := ui.TextShape{Width: v.look.width, Align: para.style.Align, Indent: indent}
@@ -826,6 +890,9 @@ func (v *view) paraLayout(p int) *paraView {
 	}
 	above, below := v.space(p, para.style)
 	_, lh := l.Size()
+	if blk != nil {
+		lh = v.blockHeight(p, blk)
+	}
 	h := above + lh + below
 	if pv.layout == nil {
 		v.laid++
@@ -836,7 +903,7 @@ func (v *view) paraLayout(p int) *paraView {
 		v.hs.add(p, float64(h), -1)
 	}
 	*pv = paraView{layout: l, units: units, id: para.id, runs: first, nruns: len(para.runs), style: para.style,
-		compose: composed, at: at, h: h, space: above + below, indent: indent}
+		compose: composed, at: at, h: h, space: above + below, indent: indent, block: blk != nil}
 	return pv
 }
 
@@ -910,6 +977,10 @@ func (v *view) caretAt(i, extra int, affinity ui.TextAffinity) (x float32, y flo
 	l := min(v.local(p, i)+extra, len(pv.units)-1)
 	r := pv.layout.CaretAt(ui.TextCaretPosition{Index: pv.units[l], Affinity: affinity})
 	ox, oy := v.origin(p)
+	if pv.block && l > 0 {
+		// After a block, at its bottom corner: before it, at its top.
+		r.Y = max(0, pv.h-pv.space-r.H)
+	}
 	return ox + r.X, oy + float64(r.Y), r.H
 }
 
@@ -1199,9 +1270,16 @@ func (d *Document) ScrollToParagraph(i int, align ui.ScrollAlign) {
 	if align > ui.ScrollEnd {
 		panic("richtext: ScrollToParagraph alignments are ui.ScrollNearest, ui.ScrollStart, ui.ScrollCenter or ui.ScrollEnd")
 	}
-	v := d.laidOut()
-	if v == nil || len(v.paras) == 0 {
-		return
+	if v := d.laidOut(); v != nil && v.scrollToPara(i, align) {
+		v.services.Invalidate()
+	}
+}
+
+// scrollToPara scrolls to paragraph i as ScrollToParagraph does, and
+// reports whether it moved.
+func (v *view) scrollToPara(i int, align ui.ScrollAlign) bool {
+	if len(v.paras) == 0 {
+		return false
 	}
 	i = max(0, min(i, len(v.paras)-1))
 	h := float64(v.viewH)
@@ -1231,9 +1309,7 @@ func (d *Document) ScrollToParagraph(i int, align ui.ScrollAlign) {
 			to = v.scroll + min(end-h, start)
 		}
 	}
-	if v.scrollTo(to) {
-		v.services.Invalidate()
-	}
+	return v.scrollTo(to)
 }
 
 // laidOut returns the editor showing the document, in step with it and
