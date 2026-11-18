@@ -497,3 +497,272 @@ func TestUndoBringsBackABlock(t *testing.T) {
 		t.Fatalf("undone, the block was built %d times, at %v", cd.builds, r)
 	}
 }
+
+// longBlockDoc returns n paragraphs, the card's block after the first few,
+// and the paragraph of the block.
+func longBlockDoc(cd *card, n int) (*Document, int) {
+	paras := []Paragraph{para("Before"), para("Above")}
+	paras = append(paras, blockPara(cd.at))
+	for i := range n {
+		paras = append(paras, para(fmt.Sprintf("Paragraph %d", i)))
+	}
+	return NewDocument(TextOf(paras...)), 2
+}
+
+// A press on a block selects its attachment, without scrolling to it or
+// dragging a selection from it, and goes on to what it presses.
+func TestBlockPressSelectsIt(t *testing.T) {
+	cd := newCard("Card", 60)
+	clicks := 0
+	cd.inside = func(c *ui.Context) {
+		if ui.ButtonBase(c).Size(80, 20).Label("Press me").Clicked() {
+			clicks++
+		}
+	}
+	doc, p := longBlockDoc(cd, 100)
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	start := doc.Text().paraStart(p)
+	doc.ScrollToParagraph(p, ui.ScrollStart)
+	bw.tt.Frame()
+	doc.ScrollBy(30) // the top of the block out of view
+	bw.tt.Frame()
+	r := bw.bounds(cd)
+	if r.Y >= 0 || r.Y+r.H <= 0 {
+		t.Fatalf("the block is at %v", r)
+	}
+	first := bw.box(t, p)
+	bw.tt.Press(200, r.Y+r.H-5)
+	bw.tt.Move(200, 150)
+	bw.tt.Release(200, 150)
+	if a, z := doc.Selection(); a != start || z != start+1 {
+		t.Fatalf("pressed and dragged from the block, the selection is %d to %d, the attachment %d", a, z, start)
+	}
+	if got := bw.box(t, p); got != first || clicks != 0 {
+		t.Fatalf("pressed, the block went from %+v to %+v, the button clicked %d times", first, got, clicks)
+	}
+	if !bw.view(t).focused {
+		t.Fatal("pressed, the editor has no focus")
+	}
+	doc.SetSelection(0, 0)
+	doc.ScrollToParagraph(p, ui.ScrollStart)
+	bw.tt.Frame()
+	if err := bw.tt.Click("Press me"); err != nil {
+		t.Fatal(err)
+	}
+	if a, z := doc.Selection(); clicks != 1 || a != start || z != start+1 {
+		t.Fatalf("the button clicked %d times, the selection is %d to %d", clicks, a, z)
+	}
+}
+
+// A right-click on a block selects its attachment and opens the editor's
+// menu.
+func TestBlockRightClickOpensTheMenu(t *testing.T) {
+	cd := newCard("Card", 60)
+	doc := NewDocument(TextOf(para("Before"), blockPara(cd.at), para("After")))
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{Menu: func(m *ui.Menu) { m.Item("The app's") }})
+	r := bw.bounds(cd)
+	bw.tt.RightClickAt(r.X+r.W/2, r.Y+r.H/2)
+	if a, z := doc.Selection(); a != 7 || z != 8 {
+		t.Fatalf("right-clicked, the selection is %d to %d", a, z)
+	}
+	if m := bw.tt.Menu(); len(m) != 1 || m[0] != "The app's" {
+		t.Fatalf("right-clicked, the menu is %q", m)
+	}
+}
+
+// A press over the scroll bar, where a block is under it, takes the bar's
+// thumb, as over the text.
+func TestBlockUnderTheScrollBar(t *testing.T) {
+	cd := newCard("Card", 60)
+	clicks := 0
+	cd.inside = func(c *ui.Context) {
+		if ui.ButtonBase(c).Fill().Label("Press me").Clicked() {
+			clicks++
+		}
+	}
+	doc, p := longBlockDoc(cd, 200)
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	r := bw.bounds(cd)
+	if r.X+r.W < 299 {
+		t.Fatalf("the block is at %v, not under the scroll bar", r)
+	}
+	bw.tt.Move(297, r.Y+r.H/2)
+	if c := bw.tt.Cursor(); c != ui.CursorDefault {
+		t.Fatalf("over the scroll bar, the cursor is %v", c)
+	}
+	bw.tt.Press(297, r.Y+r.H/2)
+	v := bw.view(t)
+	if !v.thumb {
+		t.Fatal("pressed over the scroll bar, the thumb is not held")
+	}
+	bw.tt.Move(297, r.Y+r.H/2+50)
+	bw.tt.Release(297, r.Y+r.H/2+50)
+	if v.scroll <= 0 || clicks != 0 {
+		t.Fatalf("the thumb dragged, the text is at %v, the button clicked %d times", v.scroll, clicks)
+	}
+	if a, _ := doc.Selection(); a == doc.Text().paraStart(p) {
+		t.Fatal("the press on the scroll bar selected the block")
+	}
+}
+
+// The wheel over a block scrolls the text, and goes on to the containers
+// around the editor at its end.
+func TestBlockWheel(t *testing.T) {
+	cd := newCard("Card", 60)
+	doc, _ := longBlockDoc(cd, 200)
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	r := bw.bounds(cd)
+	bw.tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, 40)
+	if v := bw.view(t); v.scroll != 40 {
+		t.Fatalf("the wheel over the block scrolled the text to %v", v.scroll)
+	}
+
+	short := newCard("Short", 60)
+	doc = NewDocument(TextOf(para("Before"), blockPara(short.at), para("After")))
+	var scroll ui.ScrollState
+	var c0 *ui.Context
+	tt := openTester(t, func(c *ui.Context) {
+		c0 = c
+		ui.Scroll(c).Height(200).TrackScroll(&scroll).Children(func() {
+			EditorBase(c, doc).FillWidth().Height(600)
+		})
+	}, 300, 400)
+	tt.Frame()
+	r = short.handle.Bounds(c0)
+	tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, 40)
+	if scroll.Y == 0 {
+		t.Fatal("the wheel over the block of an editor that does not scroll scrolled nothing around it")
+	}
+}
+
+// focusedCard is a card whose element takes the focus, and reads whether
+// it has it.
+func focusedCard(bw **blockWorld, cd *card) func() bool {
+	return func() bool { return cd.handle.Focused((*bw).c) }
+}
+
+// Return, ⌘Return and Tab on a block selected alone go into its element,
+// after the app had its say; Escape comes back with it selected. With the
+// caret after a block, Return starts a paragraph.
+func TestBlockKeysGoIn(t *testing.T) {
+	cd := newCard("Card", 60)
+	doc := NewDocument(TextOf(para("Before"), blockPara(cd.at), para("After")))
+	takeEnter := false
+	var bw *blockWorld
+	bw = newBlockWorld(t, doc, 300, 200, EditorOptions{OnKey: func(k ui.Key, _ ui.Modifiers) bool {
+		return takeEnter && k == ui.KeyEnter
+	}})
+	inCard := focusedCard(&bw, cd)
+	for _, k := range []struct {
+		mods ui.Modifiers
+		key  ui.Key
+	}{{0, ui.KeyEnter}, {ui.Cmd, ui.KeyEnter}, {0, ui.KeyTab}} {
+		bw.focus(7, 8)
+		bw.tt.Key(k.mods, k.key)
+		if !inCard() || bw.view(t).focused {
+			t.Fatalf("%v %v on the block: the element has the focus %v", k.mods, k.key, inCard())
+		}
+		bw.tt.Key(0, ui.KeyEscape)
+		if a, z := doc.Selection(); inCard() || !bw.view(t).focused || a != 7 || z != 8 {
+			t.Fatalf("Escape from the element: the editor has the focus %v, the selection is %d to %d", bw.view(t).focused, a, z)
+		}
+	}
+	takeEnter = true
+	bw.focus(7, 8)
+	bw.tt.Key(0, ui.KeyEnter)
+	if inCard() {
+		t.Fatal("the app took Return, and the element has the focus")
+	}
+	takeEnter = false
+	bw.focus(8, 8)
+	bw.tt.Key(0, ui.KeyEnter)
+	if inCard() || doc.Text().String() != "Before\n￼\n\nAfter" {
+		t.Fatalf("Return after the block: the element has the focus %v, the text is %q", inCard(), doc.Text().String())
+	}
+}
+
+// What has the focus in a block takes Escape first, when it handles it;
+// Escape comes back to the text from a focus a press put there too.
+func TestBlockEscapeInside(t *testing.T) {
+	cd := newCard("Card", 60)
+	takes, escapes := true, 0
+	var field ui.Handle
+	cd.inside = func(c *ui.Context) {
+		f := ui.Box(c).Size(80, 20).Focusable().Label("Field").Bind(&field)
+		if takes && f.Shortcut(0, ui.KeyEscape) {
+			escapes++
+		}
+	}
+	doc := NewDocument(TextOf(para("Before"), blockPara(cd.at), para("After")))
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	bw.focus(0, 0)
+	if err := bw.tt.Click("Field"); err != nil {
+		t.Fatal(err)
+	}
+	if !field.Focused(bw.c) {
+		t.Fatal("clicked, the field has no focus")
+	}
+	bw.tt.Key(0, ui.KeyEscape)
+	if escapes != 1 || !field.Focused(bw.c) {
+		t.Fatalf("the field took Escape %d times, and has the focus %v", escapes, field.Focused(bw.c))
+	}
+	takes = false
+	bw.tt.Frame()
+	bw.tt.Key(0, ui.KeyEscape)
+	if a, z := doc.Selection(); field.Focused(bw.c) || !bw.view(t).focused || a != 7 || z != 8 {
+		t.Fatalf("Escape the field left: the editor has the focus %v, the selection is %d to %d", bw.view(t).focused, a, z)
+	}
+}
+
+// A block deleted while it has the focus gives it back to the text.
+func TestBlockDeletedWithTheFocus(t *testing.T) {
+	cd := newCard("Card", 60)
+	doc := NewDocument(TextOf(para("Before"), blockPara(cd.at), para("After")))
+	var bw *blockWorld
+	bw = newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	inCard := focusedCard(&bw, cd)
+	bw.focus(7, 8)
+	bw.tt.Key(0, ui.KeyEnter)
+	if !inCard() {
+		t.Fatal("Return on the block: the element has no focus")
+	}
+	doc.InsertText("")
+	bw.tt.Frame()
+	v := bw.view(t)
+	if !v.focused || v.focusBlock != 0 || doc.Text().String() != "Before\n\nAfter" {
+		t.Fatalf("the block deleted, the editor has the focus %v, the block's %d, the text %q", v.focused, v.focusBlock, doc.Text().String())
+	}
+	bw.tt.Type("x")
+	if doc.Text().String() != "Before\nx\nAfter" {
+		t.Fatalf("typed after, the text is %q", doc.Text().String())
+	}
+}
+
+// The focus coming into a block from Tab brings its paragraph into view,
+// as the caret's does.
+func TestBlockFocusComesIntoView(t *testing.T) {
+	cd := newCard("Card", 60)
+	cd.at.KeepBuilt = true
+	cd.inside = func(c *ui.Context) { ui.Box(c).Size(80, 20).Focusable().Label("Field") }
+	var paras []Paragraph
+	for i := range 100 {
+		paras = append(paras, para(fmt.Sprintf("Paragraph %d", i)))
+	}
+	paras = append(paras, blockPara(cd.at), para("After"))
+	doc := NewDocument(TextOf(paras...))
+	bw := newBlockWorld(t, doc, 300, 200, EditorOptions{})
+	bw.focus(0, 0)
+	if blk := bw.view(t).paras[100]; blk.h != 0 && bw.view(t).last >= 100 {
+		t.Fatal("the block is in view")
+	}
+	bw.tt.Key(0, ui.KeyTab)
+	if !bw.tt.Focused("Field") {
+		t.Fatal("Tab did not go into the block")
+	}
+	if b := bw.box(t, 100); b.Top < 0 || b.Top+b.Height > 200 {
+		t.Fatalf("the focus in the block, it is at %+v", b)
+	}
+	if r := bw.bounds(cd); !near(r.Y, bw.box(t, 100).Top) {
+		t.Fatalf("the focus in the block, its element is at %v, its paragraph at %+v", r, bw.box(t, 100))
+	}
+}

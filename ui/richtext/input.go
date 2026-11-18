@@ -234,6 +234,11 @@ var emacsKeys = map[ui.Key]ui.Key{ui.KeyB: ui.KeyLeft, ui.KeyF: ui.KeyRight, ui.
 
 // key handles a key pressed, and reports whether it took it.
 func (v *view) key(key ui.Key, mods ui.Modifiers) bool {
+	// Return, ⌘Return and Tab on a block selected alone go into its
+	// element, as into a card.
+	if (key == ui.KeyEnter && (mods == 0 || mods == ui.Cmd) || key == ui.KeyTab && mods == 0) && v.enterBlock() {
+		return true
+	}
 	if cmd, ok := shortcut(key, mods); ok {
 		return v.run(cmd)
 	}

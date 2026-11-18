@@ -235,6 +235,17 @@ type view struct {
 	// misplaced counts the paints in a row that found the blocks where
 	// their paragraphs are not, though no block changed its height.
 	misplaced int
+	// strip takes the pointer over the scroll bar, above the blocks, built
+	// in the frame when stripBuilt.
+	strip      ui.Handle
+	stripBuilt bool
+	// focusBlock is the paragraph id of the block that had the focus at
+	// the last build; focusing that of the block the editor gave it to,
+	// built until it takes it, and focusAsked that it was built since.
+	// pressedBlock tells that a press on a block came since the last
+	// build: what it focuses there stays where it is.
+	focusBlock, focusing     uint64
+	focusAsked, pressedBlock bool
 }
 
 type editMode uint8
@@ -347,7 +358,7 @@ func build(c *ui.Context, doc *Document, options []EditorOptions, styled bool) u
 		e.FocusRing(false)
 	}
 	v.styled = styled
-	if len(v.blockParas) > 0 {
+	if len(v.blockParas) > 0 || v.focusBlock != 0 {
 		v.buildBlocks(c, e)
 	}
 	if v.focused && !v.opts.ReadOnly {
