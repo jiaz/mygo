@@ -21,6 +21,9 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	} else {
 		v.clipped = false
 	}
+	// The blocks' elements were laid out at their heights: the text below
+	// them moves with them, in this frame.
+	resized := v.measureBlocks(r)
 	v.layout(w, h)
 	ox, oy := r.X+v.padX, r.Y+v.padY
 	look := &v.look
@@ -59,12 +62,20 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		if a != z && a <= pe && z >= ps && (focused || v.opts.ReadOnly) {
 			from, to := v.local(i, max(a, ps)), v.local(i, min(z, pe))
 			color := look.Selection
-			for _, s := range pv.layout.SelectionRects(ui.TextInputRange{Start: pv.units[from], End: pv.units[to]}) {
-				p.Fill(ui.Rect{X: x + s.X, Y: y + s.Y, W: s.W, H: s.H}, color, 0)
+			// A block selected paints nothing of the editor's: its element
+			// knows its own shape, and shows it selected as it draws it.
+			if !pv.block {
+				for _, s := range pv.layout.SelectionRects(ui.TextInputRange{Start: pv.units[from], End: pv.units[to]}) {
+					p.Fill(ui.Rect{X: x + s.X, Y: y + s.Y, W: s.W, H: s.H}, color, 0)
+				}
 			}
 			if z > pe && i < len(v.paras)-1 {
-				// The newline selected, as a space after the line.
+				// The newline selected, as a space after the line: a block's
+				// at its bottom, where the caret after it is.
 				c := pv.layout.CaretAt(ui.TextCaretPosition{Index: pv.units[len(pv.units)-1], Affinity: ui.TextUpstream})
+				if pv.block {
+					c.Y = max(0, pv.h-pv.space-c.H)
+				}
 				p.Fill(ui.Rect{X: x + c.X, Y: y + c.Y, W: look.size * 0.35, H: c.H}, color, 0)
 			}
 		}
@@ -104,6 +115,8 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		}
 	}
 	v.moved()
+	v.blocksMoved(r, resized)
+	v.readHeight = false
 }
 
 // paintBlock paints what a paragraph of style st shows behind its text:
@@ -296,7 +309,7 @@ func romanNumber(n int) string {
 // box with the attachment's name.
 func (v *view) paintAttachments(p *ui.Painter, i int, pv *paraView, x, y float32) {
 	objects := pv.layout.Objects()
-	if len(objects) == 0 {
+	if len(objects) == 0 || pv.block { // a block shows its element instead
 		return
 	}
 	ps := v.shown.paraStart(i)

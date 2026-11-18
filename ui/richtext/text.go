@@ -93,6 +93,21 @@ type Attachment struct {
 	// Draw draws the attachment in r, instead of Image, as an app's chip
 	// for a mention or a file.
 	Draw func(p *ui.Painter, r ui.Rect)
+	// Element builds what the attachment shows alone in its paragraph,
+	// as a block of its own: an element of the app's, as a card or a
+	// chart, in place of the paragraph's line, as wide as the text there
+	// (width) and as high as it lays out. The text below it moves with
+	// its height in the frame it changes. The editor builds it in the
+	// frames its paragraph is in view; a paragraph out of view keeps the
+	// height its element last had, or Height before it was ever laid
+	// out. An attachment with other text in its paragraph shows as any
+	// other, and its element is not built.
+	Element func(c *ui.Context, width float32) ui.Element
+	// KeepBuilt builds Element in every frame, its paragraph in view or
+	// not, so that what it holds (a field typed in, a reply loading)
+	// keeps its state, and the text its height, while it is scrolled
+	// away.
+	KeepBuilt bool
 	// Data is the app's.
 	Data any
 }
