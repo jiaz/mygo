@@ -10,7 +10,8 @@ and SwiftUI's `TextEditor` bound to an `AttributedString`. It supports:
 - **Links:** opened by a click, and set from the app or with ⌘K.
 - **Paragraphs:** headings, bulleted, numbered and task lists,
   quotations, blocks of code and alignment.
-- **Attachments:** images inside lines.
+- **Attachments:** images inside lines, and elements of the app's as
+  blocks of their own.
 - **Editing:** the shortcuts and the Format menu of word processors, and
   undo that brings formats back with the text.
 - **Exchange:** copy and paste in rich formats, input methods that compose
@@ -461,6 +462,74 @@ Without an image or a `Draw` function, an attachment shows its `Name` in a
 box, as an image not loaded yet. HTML and Markdown write an attachment's
 `URL`.
 
+## Blocks
+
+An attachment with an `Element` shows an element of the app's when it is
+alone in its paragraph: a card, a chart or a form, in place of the
+paragraph's line, as wide as the text there and as high as the element lays
+out. The text below it, and the blocks there, move with its height in the
+frame it changes, as when a reply streams into the card or a part of it
+opens.
+
+```go
+poll := &richtext.Attachment{
+	Name:   "Poll",
+	Height: 96, // until the element is first laid out
+	Element: func(c *ui.Context, width float32) ui.Element {
+		return ui.Column(c).Padding(12).Gap(8).Border(1, t.Border).Radius(8).TabStop(false).Children(func() {
+			ui.Text(c, "Where do we have lunch?")
+			if ui.Button(c, "Vote").Clicked() {
+				app.vote()
+			}
+		})
+	},
+}
+app.doc = richtext.NewDocument(richtext.TextOf(
+	richtext.Paragraph{Runs: []richtext.Run{{Text: "Friday"}}},
+	richtext.Paragraph{Runs: []richtext.Run{{
+		Text:       string(richtext.ObjectReplacement),
+		Attributes: richtext.Attributes{Attachment: poll},
+	}}},
+))
+```
+
+The editor builds the element in the frames its paragraph is in view, and
+in an editor as tall as its text, in a scroll container, within the
+painter's clip and a screen around it, so that a long text builds the blocks
+it shows. Out of view, a paragraph keeps the height its element last had,
+or `Height` before it was laid out: give `Height` the element's height, and
+keep the element as high while it loads, as a placeholder of its size, so
+that the text does not move as it comes into view. `KeepBuilt` builds the
+element in every frame, in view or not, for one holding a state of its own,
+as a field being typed in or a reply loading, which the text keeps the
+height of while it is scrolled away. While the editor keeps the line being
+typed where it is ([Scrolling](#scrolling)), a block above it that grows
+moves the text above it up.
+
+- A press on a block selects its attachment and goes on to what it
+  presses, as to a button: the text does not scroll to it, and a drag from
+  it selects nothing. A right-click opens the editor's menu. Over the
+  editor's scroll bar, a press takes the bar.
+- The wheel over a block scrolls the text, and the containers around the
+  editor at its end.
+- Return, ⌘Return (Ctrl+Enter elsewhere) and Tab give the element the
+  focus when its attachment alone is selected, once `OnKey` left the key.
+  Make the element focusable for it to hold keys, with `TabStop(false)` for
+  Tab to go on to what is in it. With the caret beside the block, they do
+  what they do elsewhere: Return starts a paragraph.
+- Escape in the element gives the focus back to the text, with the
+  attachment selected, unless what has the focus in it handles Escape
+  itself, as with a `Shortcut`.
+- The focus coming into a block from Tab or from the app brings the block
+  into view, and a block deleted with the focus in it gives the focus back
+  to the text.
+- The caret beside a block is a line high, at its top before it and at its
+  bottom after it. A block is selected, copied and deleted as one
+  character, and undo brings it back with its element.
+
+An attachment with other text in its paragraph shows as any other, and its
+element is not built.
+
 ## Copy and paste
 
 Copying puts the selection on the clipboard in three formats:
@@ -502,7 +571,9 @@ runs:
   words and lines, with the font, weight, italics, lines, colors and
   heading level of each run, and the mixed value where they vary.
 
-Screen readers move the selection too.
+Screen readers move the selection too. They read each block's element
+inside the text field, as a group named as its attachment is, in the order
+of the text.
 
 ## Large documents
 
